@@ -1618,7 +1618,7 @@ mm_add_channels_to_blist(MattermostAccount *ma, JsonNode *node, gpointer user_da
 				g_free(name);
 			}
 
-		} else {
+		} else if (! purple_find_chat(ma->pc, g_str_hash(channel->id))) {
 
 			mm_set_group_chat(ma, channel->team_id, channel->name, channel->id);
 
@@ -1635,7 +1635,7 @@ mm_add_channels_to_blist(MattermostAccount *ma, JsonNode *node, gpointer user_da
 			tmpch->name = g_strdup(name);
 			tmpch->team_id = g_strdup(channel->team_id);
 
-			gchar *url = mm_build_url(ma, "/api/v4/channels/%s/", channel->id);
+			gchar *url = mm_build_url(ma, "/api/v4/channels/%s", channel->id);
 			mm_fetch_url(ma, url, NULL, mm_got_room_info, tmpch);
 			g_free(url);
 			g_free(name);
@@ -2041,7 +2041,7 @@ mm_tooltip_text(PurpleBuddy *buddy, PurpleNotifyUserInfo *user_info, gboolean fu
 static void
 mm_set_group_chat(MattermostAccount *ma, const gchar *team_id, const gchar *channel_name, const gchar *channel_id)
 {
-	gchar *tmpn = g_strconcat(channel_name, MATTERMOST_CHANNEL_SEPARATOR, g_hash_table_lookup(ma->channel_teams, team_id), NULL);
+	gchar *tmpn = g_strconcat(channel_name, MATTERMOST_CHANNEL_SEPARATOR, g_hash_table_lookup(ma->teams, team_id), NULL);
 
 	g_hash_table_replace(ma->group_chats, g_strdup(channel_id), g_strdup(tmpn));
 	g_hash_table_replace(ma->group_chats_rev, g_strdup(tmpn), g_strdup(channel_id));
@@ -2376,7 +2376,7 @@ mm_login_response(MattermostAccount *ma, JsonNode *node, gpointer user_data)
 		return;
 	}
 
-	mm_get_me(ma);
+	mm_me_response(ma, node, user_data);
 }
 
 static PurpleChatUserFlags
@@ -4010,14 +4010,16 @@ mm_chat_invite(PurpleConnection *pc, int id, const char *message, const char *wh
 	}
 	
 	data = json_object_new();
+	json_object_set_string_member(data, "channel_id", channel_id);
 	json_object_set_string_member(data, "user_id", user_id);
-	
+
 	postdata = json_object_to_string(data);
-	url = mm_build_url(ma, "/api/v3/teams/%s/channels/%s/add", team_id, channel_id);
+	url = mm_build_url(ma, "/api/v4/channels/%s/members", channel_id);
 	
 	mm_fetch_url(ma, url, postdata, NULL, NULL);
 	
 	g_free(postdata);
+	json_object_unref(data);
 	g_free(url);
 }
 
@@ -4318,9 +4320,21 @@ mm_join_room_response(MattermostAccount *ma, JsonNode *node, gpointer user_data)
 static void 
 mm_join_room(MattermostAccount *ma, MattermostChannel *channel)
 {
+	JsonObject *data;
+	gchar *postdata;
 	gchar *url;
-	url = mm_build_url(ma, "/api/v3/teams/%s/channels/%s/join", channel->team_id, channel->id);
-	mm_fetch_url(ma, url, "{}", mm_join_room_response, channel);
+
+	data = json_object_new();
+	json_object_set_string_member(data, "channel_id", channel->id);
+	json_object_set_string_member(data, "user_id", ma->self->user_id);
+
+	postdata = json_object_to_string(data);
+	url = mm_build_url(ma, "/api/v4/channels/%s/members", channel->id);
+	
+	mm_fetch_url(ma, url, postdata, mm_join_room_response, channel);
+
+	g_free(postdata);
+	json_object_unref(data);
 	g_free(url);
 }
 
@@ -4870,7 +4884,7 @@ mm_search_users_text(MattermostAccount *ma, const gchar *text)
 	json_object_set_boolean_member(obj, "allow_inactive", TRUE);
 	postdata = json_object_to_string(obj);
 	
-	url = mm_build_url(ma, "/api/v3/users/search");
+	url = mm_build_url(ma, "/api/v4/users/search");
 	mm_fetch_url(ma, url, postdata, mm_got_add_buddy_search, g_strdup(text));
 	g_free(url);
 	
