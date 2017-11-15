@@ -3250,6 +3250,7 @@ mm_set_idle(PurpleConnection *pc, int time)
 	}
 	
 	mm_mark_room_messages_read(ma, channel_id);
+	mm_refresh_statuses(ma, NULL); 
 }
 
 gboolean
